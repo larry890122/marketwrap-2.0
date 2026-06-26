@@ -88,6 +88,85 @@ def display_lines(title: str, rows: list[dict[str, Any]]) -> list[str]:
     return lines
 
 
+def tone_text(index_rows: list[dict[str, Any]]) -> str:
+    moves = [float(row["ChangePct"]) for row in index_rows]
+    if not moves:
+        return "主要指數缺少資料"
+
+    positive_count = sum(1 for move in moves if move > 0)
+    negative_count = sum(1 for move in moves if move < 0)
+    average = sum(moves) / len(moves)
+
+    if positive_count == len(moves):
+        if average >= 1:
+            return "主要指數全面走強"
+        if average >= 0.3:
+            return "主要指數普遍收高"
+        return "主要指數小幅上揚"
+
+    if negative_count == len(moves):
+        if average <= -1:
+            return "主要指數全面走弱"
+        if average <= -0.3:
+            return "主要指數普遍收低"
+        return "主要指數小幅回落"
+
+    return "主要指數漲跌互見"
+
+
+def summary_line_us(
+    index_rows: list[dict[str, Any]],
+    sector_rows: list[dict[str, Any]],
+    macro_rows: list[dict[str, Any]],
+) -> str:
+    tone = tone_text(index_rows)
+    if not sector_rows:
+        return tone
+
+    top_sector = max(sector_rows, key=lambda row: row["ChangePct"])
+    bottom_sector = min(sector_rows, key=lambda row: row["ChangePct"])
+    ten_year = next((row for row in macro_rows if row["Name"] == "US 10Y Treasury"), None)
+    vix = next((row for row in macro_rows if row["Name"] == "VIX"), None)
+
+    if ten_year and ten_year["Change"] > 0:
+        rate_text = "美國 10 年期公債殖利率走高"
+    elif ten_year and ten_year["Change"] < 0:
+        rate_text = "美國 10 年期公債殖利率回落"
+    else:
+        rate_text = "美國 10 年期公債殖利率大致持平"
+
+    if vix and vix["Change"] > 0:
+        vix_text = "市場波動升溫"
+    elif vix and vix["Change"] < 0:
+        vix_text = "市場波動降溫"
+    else:
+        vix_text = "市場波動大致持平"
+
+    return (
+        f"{tone}，類股以{get_label(top_sector['Name'])}領漲、"
+        f"{get_label(bottom_sector['Name'])}相對承壓；{rate_text}，{vix_text}。"
+    )
+
+
+def summary_line_europe(index_rows: list[dict[str, Any]]) -> str:
+    if not index_rows:
+        return "歐股主要指數缺少資料"
+
+    positive = [row for row in index_rows if row["ChangePct"] > 0]
+    negative = [row for row in index_rows if row["ChangePct"] < 0]
+    leader = max(index_rows, key=lambda row: row["ChangePct"])
+    laggard = min(index_rows, key=lambda row: row["ChangePct"])
+
+    if positive and negative:
+        tone = "歐股三大指數漲跌互見"
+    elif positive:
+        tone = "歐股三大指數全面走高"
+    else:
+        tone = "歐股三大指數全面走低"
+
+    return f"{tone}，{get_label(leader['Name'])}表現相對較強，{get_label(laggard['Name'])}相對承壓。"
+
+
 def render_market_markdown(payload: dict[str, Any]) -> list[str]:
     summary_date = dt.date.fromisoformat(payload["summaryDate"])
     display_date_zh = f"{summary_date.year}年{summary_date.month:02d}月{summary_date.day:02d}日"
