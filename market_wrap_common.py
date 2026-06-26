@@ -4,6 +4,7 @@ import datetime as dt
 import json
 import pathlib
 from typing import Any
+from urllib.parse import urlparse
 
 
 LABELS_ZH = {
@@ -85,6 +86,32 @@ def display_lines(title: str, rows: list[dict[str, Any]]) -> list[str]:
     lines = [f"## {title}"]
     for row in rows:
         lines.append(f"- {get_label(row['Name'])}: {format_last_value(row)} ({format_change_text(row)})")
+    return lines
+
+
+def compact_source_host(url: str) -> str:
+    if not url:
+        return ""
+    host = urlparse(url).netloc.lower()
+    if host.startswith("www."):
+        host = host[4:]
+    return host
+
+
+def render_metric_table(title: str, rows: list[dict[str, Any]]) -> list[str]:
+    if not rows:
+        return []
+
+    lines = [
+        f"## {title}",
+        "",
+        "| 項目 | 最新 | 變動 |",
+        "| --- | ---: | ---: |",
+    ]
+    for row in rows:
+        lines.append(
+            f"| {get_label(row['Name'])} | {format_last_value(row)} | {format_change_text(row)} |"
+        )
     return lines
 
 
@@ -172,12 +199,14 @@ def render_market_markdown(payload: dict[str, Any]) -> list[str]:
     display_date_zh = f"{summary_date.year}年{summary_date.month:02d}月{summary_date.day:02d}日"
 
     lines = [
-        f"# {payload['reportTitle']} | {payload['summaryDate']}",
+        f"# {payload['reportTitle']}",
         "",
-        f"日期: {display_date_zh} {payload.get('subtitleSuffix', '')}".rstrip(),
+        f"> **日期**：{display_date_zh} {payload.get('subtitleSuffix', '')}".rstrip(),
+        f"> **價格來源**：{payload.get('priceSource', 'Yahoo Finance')}",
         "",
-        "## 一句話摘要",
-        payload.get("oneLineSummary", "無資料"),
+        "## 市場摘要",
+        "",
+        f"**Headline**：{payload.get('oneLineSummary', '無資料')}",
     ]
 
     top_sectors = payload.get("topSectors") or []
@@ -185,55 +214,44 @@ def render_market_markdown(payload: dict[str, Any]) -> list[str]:
     megacap_leaders = payload.get("megacapLeaders") or []
     megacap_laggards = payload.get("megacapLaggards") or []
 
-    if top_sectors:
-        lines.append(f"- 領漲族群: {ranked_summary(top_sectors)}")
-    if weakest_sectors:
-        lines.append(f"- 領跌族群: {ranked_summary(weakest_sectors)}")
-    if megacap_leaders:
-        lines.append(f"- Mega-cap 相對抗跌: {ranked_summary(megacap_leaders)}")
-    if megacap_laggards:
-        lines.append(f"- Mega-cap 壓力來源: {ranked_summary(megacap_laggards)}")
-
     commentary = payload.get("marketCommentary") or {}
     if commentary.get("comment"):
-        lines.extend(["", "## 買方觀點", commentary["comment"]])
+        lines.extend(["", "## 買方觀點", "", commentary["comment"]])
         if commentary.get("driverSummary"):
-            lines.append(f"- 核心驅動: {commentary['driverSummary']}")
+            lines.append("")
+            lines.append(f"**核心驅動**：{commentary['driverSummary']}")
         if commentary.get("marketImplication"):
-            lines.append(f"- 下一交易日觀察: {commentary['marketImplication']}")
+            lines.append(f"**下一交易日觀察**：{commentary['marketImplication']}")
 
-    lines.append("")
-    lines.extend(display_lines("主要指數", payload.get("indices") or []))
+    lines.extend([""])
+    lines.extend(render_metric_table("主要指數", payload.get("indices") or []))
 
     macro_rows = payload.get("macro") or []
     if macro_rows:
-        lines.append("")
-        lines.extend(display_lines("宏觀與商品", macro_rows))
+        lines.extend([""])
+        lines.extend(render_metric_table("宏觀與商品", macro_rows))
 
     if top_sectors:
-        lines.append("")
-        lines.extend(display_lines("領漲族群", top_sectors))
+        lines.extend(["", "## 板塊與風格", "", f"**領漲族群**：{ranked_summary(top_sectors)}"])
     if weakest_sectors:
-        lines.append("")
-        lines.extend(display_lines("領跌族群", weakest_sectors))
+        lines.append(f"**領跌族群**：{ranked_summary(weakest_sectors)}")
     if megacap_leaders:
-        lines.append("")
-        lines.extend(display_lines("Mega-cap 相對抗跌", megacap_leaders))
+        lines.append(f"**Mega-cap 相對抗跌**：{ranked_summary(megacap_leaders)}")
     if megacap_laggards:
-        lines.append("")
-        lines.extend(display_lines("Mega-cap 壓力來源", megacap_laggards))
+        lines.append(f"**Mega-cap 壓力來源**：{ranked_summary(megacap_laggards)}")
 
     sources = commentary.get("sources") or []
     if sources:
-        lines.extend(["", "## 參考來源"])
+        lines.extend(["", "## 參考來源", ""])
         for source in sources:
             source_name = source.get("source_name", "Unknown")
             title = source.get("title", source_name)
             url = source.get("url", "")
             if url:
-                lines.append(f"- [{source_name}] {title} - {url}")
+                host = compact_source_host(url)
+                lines.append(f"- **{source_name}**：[{title}]({url})" + (f" (`{host}`)" if host else ""))
             else:
-                lines.append(f"- [{source_name}] {title}")
+                lines.append(f"- **{source_name}**：{title}")
 
     return lines
 
