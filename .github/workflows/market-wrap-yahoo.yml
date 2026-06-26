@@ -1,0 +1,47 @@
+name: Daily Market Wrap
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 0 * * *"
+
+jobs:
+  market-wrap:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Generate market price output
+        run: python generate_market_wrap_yahoo.py --market all
+
+      - name: Generate market news context
+        run: python generate_market_news_context.py --market all
+
+      - name: Generate GPT market commentary
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
+        run: python generate_market_commentary.py --market all
+
+      - name: Preview email body
+        run: python send_market_wrap_email.py --print-only
+
+      - name: Send email
+        env:
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+          GMAIL_SENDER: ${{ secrets.GMAIL_SENDER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+        run: python send_market_wrap_email.py
+
+      - name: Upload output artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: daily-market-wrap-output
+          path: output/
