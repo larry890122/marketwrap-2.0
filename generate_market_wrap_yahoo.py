@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import argparse
+import collections
 import datetime as dt
 import pathlib
 import urllib.parse
 import urllib.request
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from market_wrap_common import summary_line_europe, summary_line_us, write_market_outputs
 from market_wrap_common import load_json
@@ -59,18 +61,28 @@ def fetch_series(symbol: str, start: dt.date, end: dt.date, price_scale: float =
     row = result[0]
     timestamps = row.get("timestamp") or []
     closes = (((row.get("indicators") or {}).get("quote") or [{}])[0].get("close")) or []
+    timezone_name = ((row.get("meta") or {}).get("exchangeTimezoneName")) or "UTC"
 
     series: list[tuple[dt.date, float]] = []
     for timestamp, close in zip(timestamps, closes):
         if close is None:
             continue
-        price_date = dt.datetime.fromtimestamp(timestamp, UTC).date()
+        price_date = resolve_exchange_date(timestamp, timezone_name)
         series.append((price_date, round(float(close) * price_scale, 6)))
 
     series.sort(key=lambda item: item[0])
     if not series:
         raise RuntimeError(f"Yahoo Finance returned empty price series for {symbol}.")
     return series
+
+
+def resolve_exchange_date(timestamp: int, timezone_name: str) -> dt.date:
+    timestamp_dt = dt.datetime.fromtimestamp(timestamp, UTC)
+    try:
+        exchange_tz = ZoneInfo(timezone_name)
+    except ZoneInfoNotFoundError:
+        return timestamp_dt.date()
+    return timestamp_dt.astimezone(exchange_tz).date()
 
 
 def get_point_on_or_before(series: list[tuple[dt.date, float]], target_date: dt.date) -> tuple[dt.date, float] | None:
@@ -81,6 +93,24 @@ def get_point_on_or_before(series: list[tuple[dt.date, float]], target_date: dt.
 def get_previous_point(series: list[tuple[dt.date, float]], target_date: dt.date) -> tuple[dt.date, float] | None:
     eligible = [item for item in series if item[0] < target_date]
     return eligible[-1] if eligible else None
+
+
+def resolve_summary_date(
+    market_config: dict[str, Any],
+    series_by_symbol: dict[str, list[tuple[dt.date, float]]],
+    as_of_date: dt.date,
+) -> dt.date:
+    latest_dates: list[dt.date] = []
+    for item in market_config["indices"]:
+        point = get_point_on_or_before(series_by_symbol[item["symbol"]], as_of_date)
+        if point:
+            latest_dates.append(point[0])
+
+    if not latest_dates:
+        raise RuntimeError(f"Unable to determine summary date for {market_config['key']}.")
+
+    counts = collections.Counter(latest_dates)
+    return max(counts.items(), key=lambda entry: (entry[1], entry[0]))[0]
 
 
 def build_row(item: dict[str, Any], series_by_symbol: dict[str, list[tuple[dt.date, float]]], summary_date: dt.date) -> dict[str, Any] | None:
@@ -191,11 +221,7 @@ def run_market(market_config: dict[str, Any], as_of_date: dt.date, output_dir: p
             continue
         series_by_symbol[symbol] = fetch_series(symbol, start, as_of_date, item.get("priceScale", 1.0))
 
-    summary_series = series_by_symbol[market_config["summarySymbol"]]
-    summary_point = get_point_on_or_before(summary_series, as_of_date)
-    if not summary_point:
-        raise RuntimeError(f"Unable to determine summary date for {market_config['key']}.")
-    summary_date = summary_point[0]
+    summary_date = resolve_summary_date(market_config, series_by_symbol, as_of_date)
 
     if market_config["key"] == "us":
         payload = build_us_payload(market_config, series_by_symbol, summary_date)

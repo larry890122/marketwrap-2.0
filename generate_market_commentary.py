@@ -60,6 +60,7 @@ def build_prompts(payload: dict[str, Any], context: dict[str, Any]) -> tuple[str
         "不要空泛，不要用『市場觀望』『投資人消化消息』這類低資訊密度句子。"
         "只根據提供資料歸納，不得杜撰。"
         "輸出必須是 JSON，且只包含 comment、driverSummary、marketImplication 三個欄位。"
+        "三個欄位的值都必須是單一字串，不可輸出陣列、物件或條列。"
     )
 
     instructions = {
@@ -108,6 +109,27 @@ def parse_model_json(text: str) -> dict[str, Any]:
         if not match:
             raise
         return json.loads(match.group(0))
+
+
+def normalize_text_field(value: Any) -> str:
+    if isinstance(value, str):
+        return value.strip()
+
+    if isinstance(value, list):
+        parts = [normalize_text_field(item) for item in value]
+        return " ".join(part for part in parts if part).strip()
+
+    if isinstance(value, dict):
+        for key in ("text", "summary", "value", "content"):
+            normalized = normalize_text_field(value.get(key))
+            if normalized:
+                return normalized
+        return json.dumps(value, ensure_ascii=False).strip()
+
+    if value is None:
+        return ""
+
+    return str(value).strip()
 
 
 def call_openai(api_key: str, model: str, system_prompt: str, user_prompt: str) -> dict[str, Any]:
@@ -174,6 +196,14 @@ def build_commentary(payload: dict[str, Any], context: dict[str, Any], api_key: 
     except Exception as exc:
         return fallback_commentary(payload, context, model, str(exc))
 
+    if not isinstance(model_response, dict):
+        return fallback_commentary(
+            payload,
+            context,
+            model,
+            f"Unexpected model response type: {type(model_response).__name__}",
+        )
+
     sources = [
         {
             "source_name": article.get("source_name", "Unknown"),
@@ -185,9 +215,9 @@ def build_commentary(payload: dict[str, Any], context: dict[str, Any], api_key: 
     ]
 
     return {
-        "comment": model_response.get("comment", "").strip(),
-        "driverSummary": model_response.get("driverSummary", "").strip(),
-        "marketImplication": model_response.get("marketImplication", "").strip(),
+        "comment": normalize_text_field(model_response.get("comment", "")),
+        "driverSummary": normalize_text_field(model_response.get("driverSummary", "")),
+        "marketImplication": normalize_text_field(model_response.get("marketImplication", "")),
         "sources": sources,
         "model": model,
         "generated_at": dt.datetime.now(UTC).isoformat(),

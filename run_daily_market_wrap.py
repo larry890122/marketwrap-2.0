@@ -24,7 +24,7 @@ def parse_args() -> argparse.Namespace:
 def resolve_target_date(raw: str | None) -> str:
     if raw:
         return dt.date.fromisoformat(raw).isoformat()
-    return (dt.datetime.now(UTC).date() - dt.timedelta(days=1)).isoformat()
+    return dt.datetime.now(UTC).date().isoformat()
 
 
 def run_step(command: list[str]) -> None:

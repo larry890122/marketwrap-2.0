@@ -34,17 +34,17 @@ def build_market_section(title: str, payload: dict[str, Any]) -> list[str]:
     lines = [title]
     lines.append(f"日期: {payload.get('summaryDate', 'n/a')}")
     if payload.get("priceSource"):
-        lines.append(f"股價來源: {payload['priceSource']}")
+        lines.append(f"價格來源: {payload['priceSource']}")
     if payload.get("oneLineSummary"):
-        lines.append(f"盤勢摘要: {payload['oneLineSummary']}")
+        lines.append(f"一句話摘要: {payload['oneLineSummary']}")
 
     commentary = payload.get("marketCommentary") or {}
     if commentary.get("driverSummary"):
-        lines.append(f"驅動摘要: {commentary['driverSummary']}")
+        lines.append(f"核心驅動: {commentary['driverSummary']}")
     if commentary.get("comment"):
-        lines.append(f"市場評論: {commentary['comment']}")
+        lines.append(f"買方觀點: {commentary['comment']}")
     if commentary.get("marketImplication"):
-        lines.append(f"關鍵觀察: {commentary['marketImplication']}")
+        lines.append(f"下一交易日觀察: {commentary['marketImplication']}")
 
     lines.append("")
     lines.append("主要指數")
@@ -54,7 +54,7 @@ def build_market_section(title: str, payload: dict[str, Any]) -> list[str]:
     macro_rows = payload.get("macro") or []
     if macro_rows:
         lines.append("")
-        lines.append("跨資產觀察")
+        lines.append("宏觀與商品")
         for row in macro_rows:
             lines.append(format_row(row))
 
@@ -69,8 +69,8 @@ def build_market_section(title: str, payload: dict[str, Any]) -> list[str]:
     megacap_laggards = payload.get("megacapLaggards") or []
     if megacap_leaders or megacap_laggards:
         lines.append("")
-        lines.append(f"大型股強勢: {ranked_summary(megacap_leaders)}")
-        lines.append(f"大型股弱勢: {ranked_summary(megacap_laggards)}")
+        lines.append(f"Mega-cap 相對抗跌: {ranked_summary(megacap_leaders)}")
+        lines.append(f"Mega-cap 壓力來源: {ranked_summary(megacap_laggards)}")
 
     sources = commentary.get("sources") or []
     if sources:
@@ -88,7 +88,7 @@ def build_subject(us_payload: dict[str, Any], europe_payload: dict[str, Any]) ->
     if us_date and us_date == eu_date:
         return f"每日市場晨報 | {us_date}"
     if us_date and eu_date:
-        return f"每日市場晨報 | US {us_date} | EU {eu_date}"
+        return f"每日市場晨報 | US {us_date} | Europe {eu_date}"
     return "每日市場晨報"
 
 
