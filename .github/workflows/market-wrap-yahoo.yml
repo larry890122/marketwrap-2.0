@@ -3,7 +3,7 @@ name: Daily Market Wrap
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 0 * * *"
+    - cron: "58 23 * * *"
 
 jobs:
   market-wrap:
@@ -19,26 +19,26 @@ jobs:
           python-version: "3.12"
 
       - name: Generate market price output
-        run: python -X utf8 generate_market_wrap_yahoo.py --market all
+        run: python generate_market_wrap_yahoo.py --market all
 
       - name: Generate market news context
-        run: python -X utf8 generate_market_news_context.py --market all
+        run: python generate_market_news_context.py --market all
 
       - name: Generate GPT market commentary
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
-        run: python -X utf8 generate_market_commentary.py --market all
+        run: python generate_market_commentary.py --market all
 
       - name: Preview email body
-        run: python -X utf8 send_market_wrap_email.py --print-only
+        run: python send_market_wrap_email.py --print-only
 
       - name: Send email
         env:
           EMAIL_TO: ${{ secrets.EMAIL_TO }}
           GMAIL_SENDER: ${{ secrets.GMAIL_SENDER }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
-        run: python -X utf8 send_market_wrap_email.py
+        run: python send_market_wrap_email.py
 
       - name: Upload output artifact
         uses: actions/upload-artifact@v4
